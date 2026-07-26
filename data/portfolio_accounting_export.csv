@@ -1,0 +1,11 @@
+acct_id,ticker,asset_class,target_weight_pct,shares_reported
+HH-1001-01,AAPL,US Equity,15,150
+HH-1001-01,MSFT,US Equity,15,80
+HH-1001-02,AAPL,US Equity,20,60
+HH-1002-01,TSLA,US Equity,10,200
+HH-1002-01,SPY,US Equity,25,100
+HH-1002-02,TSLA,US Equity,10,50
+HH-1003-01,NVDA,US Equity,12,300
+HH-1003-01,QQQ,US Equity,20,120
+HH-1003-02,NVDA,US Equity,12,90
+HH-1004-01,AAPL,US Equity,18,400
