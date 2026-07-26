@@ -4,7 +4,16 @@ Streamlit chat UI for the wealth-ops agent demo.
 Run with:
     export ANTHROPIC_API_KEY=sk-ant-...
     streamlit run app.py
+
+Optional access controls (both off by default for local dev; set at least
+APP_PASSWORD before deploying somewhere public, since every question spends
+your Anthropic API credits):
+    export APP_PASSWORD=some-shared-code   # gates the whole app behind a code
+On Streamlit Community Cloud, set these under Settings -> Secrets instead of
+as shell exports -- they're injected as env vars automatically.
 """
+
+import os
 
 import altair as alt
 import pandas as pd
@@ -13,6 +22,41 @@ import streamlit as st
 from agent import ask
 
 st.set_page_config(page_title="Wealth Ops Agent", layout="centered")
+
+MAX_QUESTIONS_PER_SESSION = 20
+
+
+def _get_app_password() -> str | None:
+    try:
+        return st.secrets["APP_PASSWORD"]
+    except Exception:  # noqa: BLE001 -- st.secrets raises if no secrets.toml exists at all
+        return os.environ.get("APP_PASSWORD")
+
+
+def _check_access() -> bool:
+    """Gate the whole app behind a shared access code. Returns True once
+    access is granted; renders the entry screen and returns False otherwise.
+    If no APP_PASSWORD is configured, the gate is skipped (local dev)."""
+    password = _get_app_password()
+    if not password:
+        return True
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("Wealth Ops Agent")
+    st.caption("This demo is access-gated to control API usage. Enter the access code to continue.")
+    entered = st.text_input("Access code", type="password")
+    if st.button("Enter"):
+        if entered == password:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect access code.")
+    return False
+
+
+if not _check_access():
+    st.stop()
 
 st.title("Wealth Ops Agent")
 st.caption(
@@ -157,14 +201,24 @@ if question:
     with st.chat_message("user"):
         st.markdown(question)
 
+    asked_so_far = st.session_state.get("question_count", 0)
+
     with st.chat_message("assistant"):
-        with st.spinner("Scanning custodian + portfolio-accounting data..."):
-            try:
-                result = ask(question)
-                spec = result["chart_spec"].model_dump() if result["chart_spec"] else None
-                text, chart = result["text"], _build_chart(spec, result["data"])
-            except Exception as e:  # noqa: BLE001
-                text, chart = f"Error: {e}", None
+        if asked_so_far >= MAX_QUESTIONS_PER_SESSION:
+            text, chart = (
+                f"This demo is capped at {MAX_QUESTIONS_PER_SESSION} questions per "
+                "session to control API costs. Refresh the page to start a new session.",
+                None,
+            )
+        else:
+            st.session_state.question_count = asked_so_far + 1
+            with st.spinner("Scanning custodian + portfolio-accounting data..."):
+                try:
+                    result = ask(question)
+                    spec = result["chart_spec"].model_dump() if result["chart_spec"] else None
+                    text, chart = result["text"], _build_chart(spec, result["data"])
+                except Exception as e:  # noqa: BLE001
+                    text, chart = f"Error: {e}", None
         st.markdown(text)
         if chart is not None:
             st.altair_chart(chart, use_container_width=True)

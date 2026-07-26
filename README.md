@@ -53,6 +53,22 @@ export ANTHROPIC_API_KEY=sk-ant-...
 streamlit run app.py
 ```
 
+### Deploying somewhere public
+
+Every question this app answers spends your Anthropic API credits, so if you
+deploy it (e.g. Streamlit Community Cloud) with a public URL, also set:
+
+```bash
+export APP_PASSWORD=some-shared-code   # gates the whole app behind a code
+```
+
+On Streamlit Community Cloud, set `ANTHROPIC_API_KEY` and `APP_PASSWORD` under
+**Settings -> Secrets** rather than as shell exports — they're injected as env
+vars automatically. Without `APP_PASSWORD` set, the app runs ungated (fine for
+local dev, not recommended once the URL is public). As a second layer, each
+browser session is capped at `MAX_QUESTIONS_PER_SESSION` (20 by default,
+configurable in `app.py`) regardless of the access code.
+
 Or run the agent directly from the CLI:
 
 ```bash
