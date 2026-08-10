@@ -14,6 +14,7 @@ Ask a question like:
 
 - *"Which accounts have a tax-loss harvesting opportunity this week?"*
 - *"Which households are over-concentrated in a single position?"*
+- *"Which of those harvesting opportunities would actually trigger a wash sale?"*
 
 The agent:
 
@@ -21,12 +22,19 @@ The agent:
    Claude decides which tool to call and with what parameters, but never
    invents a number itself.
 2. **Joins messy multi-source data** — a synthetic custodian export (position
-   market values, cost basis) and a portfolio-accounting export (target
-   weights, asset class), bridged by an account-mapping table, mirroring how
-   a real RIA's data is split across vendor systems.
-3. **Writes a decision-ready report**, citing which source system each figure
+   market values, cost basis), a portfolio-accounting export (target weights,
+   asset class), and a transaction feed (recent buys/sells), bridged by an
+   account-mapping table that also carries each account's owner and type
+   (Taxable/IRA/Roth), mirroring how a real RIA's data is split across vendor
+   systems and split again across a household's spouses and account types.
+3. **Reasons at the household level, not the account level** — the wash-sale
+   scan checks every account belonging to a household, including a spouse's
+   account and IRA/Roth accounts, because the IRS attributes wash sales
+   across those even though they're on separate 1099s. This is the check a
+   single-account or single-custodian tool structurally can't make.
+4. **Writes a decision-ready report**, citing which source system each figure
    came from.
-4. **Derives its own chart** from the shape of the actual result — the model
+5. **Derives its own chart** from the shape of the actual result — the model
    looks at the real field names and values returned and decides what's worth
    plotting and how (bar vs. no chart, which fields, percent vs. currency),
    rather than the UI having a hardcoded chart template per question type.
@@ -37,7 +45,9 @@ The agent:
 data/
   custodian_export.csv            # position-level market value / cost basis (messy formatting)
   portfolio_accounting_export.csv # target weights / asset class (different ID scheme)
-  account_mapping.csv             # bridges the two systems' account IDs to a household
+  transactions.csv                # recent buy/sell activity, used for wash-sale detection
+  account_mapping.csv             # bridges the systems' account IDs to a household,
+                                   # owner (which spouse), and account_type (Taxable/IRA/Roth)
 
 skills.py   # deterministic pandas joins/scans — the only source of truth for numbers
 agent.py    # Claude tool-use loop: routes the question, calls skills.py, writes the

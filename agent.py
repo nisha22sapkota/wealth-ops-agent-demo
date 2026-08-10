@@ -16,7 +16,7 @@ import anthropic
 from anthropic import beta_tool
 from pydantic import BaseModel, Field
 
-from skills import tlh_scan, concentration_scan
+from skills import tlh_scan, concentration_scan, wash_sale_scan
 
 MODEL = "claude-opus-5"
 
@@ -110,7 +110,33 @@ def scan_concentration_risk(threshold_pct: float = 20.0) -> str:
     return json.dumps(result)
 
 
-TOOLS = [scan_tax_loss_harvesting_opportunities, scan_concentration_risk]
+@beta_tool
+def scan_wash_sale_conflicts(threshold_pct: float = 10.0, as_of_date: str = "") -> str:
+    """Find tax-loss harvesting candidates that would trigger a wash sale if
+    harvested now, because the same security was bought within the trailing
+    30 days in ANY account in the household -- including a spouse's account
+    or an IRA/Roth, which the IRS attributes together for wash-sale purposes
+    even though they're separate accounts and separate 1099s.
+
+    Args:
+        threshold_pct: Minimum unrealized loss, as a positive percent, to be
+            considered a harvesting candidate (same meaning as in the TLH scan).
+        as_of_date: ISO date (YYYY-MM-DD) to treat as "today" for the 30-day
+            lookback. Leave blank to use the current date; pass an explicit
+            date to reproduce results against this demo's fixed transaction
+            dates (e.g. "2026-08-10").
+    """
+    result = wash_sale_scan(threshold_pct, as_of_date or None)
+    _last_call["tool"] = "wash_sale"
+    _last_call["data"] = result
+    return json.dumps(result)
+
+
+TOOLS = [
+    scan_tax_loss_harvesting_opportunities,
+    scan_concentration_risk,
+    scan_wash_sale_conflicts,
+]
 
 CHART_SYSTEM_PROMPT = """\
 You turn a raw scan result (a JSON list of records) into a chart specification. \

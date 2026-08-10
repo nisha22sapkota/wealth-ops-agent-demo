@@ -45,6 +45,12 @@ def _load_portfolio_accounting() -> pd.DataFrame:
     return pd.read_csv(os.path.join(DATA_DIR, "portfolio_accounting_export.csv"))
 
 
+def _load_transactions() -> pd.DataFrame:
+    df = pd.read_csv(os.path.join(DATA_DIR, "transactions.csv"))
+    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
+    return df
+
+
 def _custodian_with_household() -> pd.DataFrame:
     custodian = _load_custodian()
     mapping = _load_mapping()
@@ -126,4 +132,97 @@ def concentration_scan(threshold_pct: float = 20.0) -> list[dict]:
             )
 
     hits.sort(key=lambda h: -h["weight_pct"])
+    return hits
+
+
+def wash_sale_scan(threshold_pct: float = 10.0, as_of: str | None = None) -> list[dict]:
+    """
+    For every unrealized-loss position that tlh_scan would flag as a harvesting
+    candidate, check whether harvesting it today would trigger a wash sale --
+    a purchase of the same symbol within the trailing 30 days in ANY account
+    belonging to the same household. This deliberately looks across the whole
+    household (every account_type and every owner, including a spouse's
+    account and IRA/Roth accounts), not just the account holding the loss --
+    IRS wash-sale attribution applies across spouses and across a person's own
+    IRA even though those accounts don't share a 1099 with the taxable
+    account. A single-account or single-custodian tool cannot see this.
+
+    Args:
+        threshold_pct: Same meaning as in tlh_scan -- minimum unrealized loss,
+            as a positive percent, to be considered a harvesting candidate.
+        as_of: ISO date (YYYY-MM-DD) to treat as "today" for the 30-day
+            lookback window. Defaults to the current date. Pass this
+            explicitly for reproducible results against this demo's static
+            transactions.csv dates.
+    """
+    as_of_ts = pd.Timestamp(as_of) if as_of else pd.Timestamp.now().normalize()
+    window_start = as_of_ts - pd.Timedelta(days=30)
+
+    holdings = _custodian_with_household()
+    holdings["unrealized_gain_loss"] = holdings["MarketValue"] - holdings["CostBasis"]
+    holdings["gain_loss_pct"] = (holdings["unrealized_gain_loss"] / holdings["CostBasis"]) * 100
+    loss_candidates = holdings[holdings["gain_loss_pct"] <= -threshold_pct]
+
+    txns = _load_transactions().merge(
+        _load_mapping(),
+        left_on="AccountNumber",
+        right_on="custodian_account_number",
+        how="left",
+    )
+    recent_buys = txns[
+        (txns["Action"] == "BUY")
+        & (txns["Date"] >= window_start)
+        & (txns["Date"] <= as_of_ts)
+    ]
+
+    hits = []
+    for _, row in loss_candidates.iterrows():
+        conflicts = recent_buys[
+            (recent_buys["household_name"] == row["household_name"])
+            & (recent_buys["Symbol"] == row["Symbol"])
+        ]
+        if conflicts.empty:
+            continue
+
+        conflict_rows = [
+            {
+                "purchase_account": c["AccountNumber"],
+                "owner": c["owner"],
+                "account_type": c["account_type"],
+                "purchase_date": c["Date"].strftime("%Y-%m-%d"),
+                "quantity": int(c["Quantity"]),
+            }
+            for _, c in conflicts.iterrows()
+        ]
+        ira_involved = any(c["account_type"] in ("IRA", "Roth") for c in conflict_rows)
+
+        hits.append(
+            {
+                "household": row["household_name"],
+                "symbol": row["Symbol"],
+                "loss_account": row["AccountNumber"],
+                "loss_owner": row["owner"],
+                "loss_account_type": row["account_type"],
+                "unrealized_loss": round(row["unrealized_gain_loss"], 2),
+                "loss_pct": round(row["gain_loss_pct"], 1),
+                "conflicting_purchases": conflict_rows,
+                "risk": (
+                    "Repurchase occurred in an IRA/Roth -- if harvested, the loss "
+                    "is PERMANENTLY disallowed (no basis step-up is available in "
+                    "a tax-deferred account)."
+                    if ira_involved
+                    else "Repurchase occurred in a taxable account -- the loss is "
+                    "deferred and added to the replacement lot's basis, not "
+                    "permanently lost, but harvesting now will not currently "
+                    "reduce taxable income."
+                ),
+                "source": (
+                    "custodian_export.csv (loss position) joined to "
+                    "transactions.csv (recent household-wide purchases) via "
+                    "account_mapping.csv (household + owner + account_type rollup)"
+                ),
+            }
+        )
+
+    hits.sort(key=lambda h: h["loss_pct"])
     return hits

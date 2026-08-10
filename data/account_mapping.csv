@@ -1,8 +1,8 @@
-custodian_account_number,acct_id,household_name,advisor
-84920011,HH-1001-01,Whitfield Household,J. Alvarez
-84920012,HH-1001-02,Whitfield Household,J. Alvarez
-77213340,HH-1002-01,Kessler Household,J. Alvarez
-77213341,HH-1002-02,Kessler Household,J. Alvarez
-91002234,HH-1003-01,Nguyen-Patel Household,M. Osei
-91002235,HH-1003-02,Nguyen-Patel Household,M. Osei
-65029981,HH-1004-01,Ferraro Household,M. Osei
+custodian_account_number,acct_id,household_name,advisor,owner,account_type
+84920011,HH-1001-01,Whitfield Household,J. Alvarez,Robert Whitfield,Taxable
+84920012,HH-1001-02,Whitfield Household,J. Alvarez,Elena Whitfield,Taxable
+77213340,HH-1002-01,Kessler Household,J. Alvarez,David Kessler,Taxable
+77213341,HH-1002-02,Kessler Household,J. Alvarez,David Kessler,IRA
+91002234,HH-1003-01,Nguyen-Patel Household,M. Osei,Priya Nguyen,Taxable
+91002235,HH-1003-02,Nguyen-Patel Household,M. Osei,Arjun Patel,Taxable
+65029981,HH-1004-01,Ferraro Household,M. Osei,Sam Ferraro,Roth
